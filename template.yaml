@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS SAM template for textract integration
+Parameters:
+  InvoicesBucket:
+    Type: String
+    Default: facturas-tesoro-lab
+Resources:
+  InvoiceLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: InvoiceLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowTextractActions
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - textract:AnalyzeExpense
+                Resource: '*'
+        - PolicyName: AllowLambdaActions
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:GetLayerVersion
+                Resource: '*'
+        - PolicyName: AllowCloudwatchActions
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+  TextractFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TextractFunction
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      CodeUri: ./lambda
+      Timeout: 30
+      Environment:
+        Variables:
+          INVOICES_BUCKET: !Sub ${InvoicesBucket}
+      Role: !GetAtt InvoiceLambdaExecutionRole.Arn
+      Layers:
+        - arn:aws:lambda:us-east-1:770693421928:layer:Klayers-p38-Pillow:8
+      FunctionUrlConfig:
+        AuthType: NONE
+      Events:
+        ApiGatewayTextractPOSTtextract:
+          Type: Api
+          Properties:
+            Path: /textract
+            Method: POST
+            RestApiId: !Ref ApiGatewayTextract
+      MemorySize: 3008
+  ApiGatewayTextract:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${AWS::StackName}
+        - ResourceName: ApiGatewayTextract
+      StageName: prod
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /textract:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TextractFunction.Arn}/invocations
+              responses:
+                '200':
+                  description: Default response for CORS method
+                  headers:
+                    Access-Control-Allow-Origin:
+                      schema:
+                        type: string
+                    Access-Control-Allow-Methods:
+                      schema:
+                        type: string
+                    Access-Control-Allow-Headers:
+                      schema:
+                        type: string
+                  content: {}
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Cors:
+        MaxAge: 5
+        AllowOrigin: '''*'''
+        AllowHeaders: '''Access-Control-Allow-Origin,Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'''
+Outputs:
+  ApiGatewayEndpoint:
+    Description: Endpoint URL of the API Gateway
+    Value: !Sub https://${ApiGatewayTextract}.execute-api.${AWS::Region}.amazonaws.com/prod/textract
+    Export:
+      Name: ApiGatewayEndpoint
