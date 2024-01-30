@@ -17,7 +17,7 @@
         </q-input>
         <q-uploader
           label="Upload the expense image"
-          accept="image/png,image/jpeg"
+          accept="image/png,image/jpeg,.pdf"
           color="primmary"
           flat
           bordered
